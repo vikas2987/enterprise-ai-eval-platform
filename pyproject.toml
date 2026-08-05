@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-ai-eval-platform"
+version = "0.1.0"
+description = "A framework for evaluating enterprise LLM & RAG agents on faithfulness, groundedness, quality, latency, and cost."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Vikas Shukla" }]
+keywords = ["llm", "rag", "evaluation", "ai-agents", "groundedness", "faithfulness", "enterprise-ai"]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.39.0"]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+eval-platform = "eval_platform.runner:main"
