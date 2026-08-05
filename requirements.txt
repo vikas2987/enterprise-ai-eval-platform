@@ -1,0 +1,7 @@
+# Core runtime has zero hard dependencies — the platform runs offline with the mock judge.
+# Optional extras below are only needed for a real LLM judge.
+
+# anthropic>=0.39.0   # uncomment to use the Anthropic LLM judge
+
+# Dev / test
+pytest>=8.0.0
