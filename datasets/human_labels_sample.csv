@@ -1,0 +1,9 @@
+id,question,human_faithfulness,human_groundedness,human_answer_relevance,notes
+fin-001,What are the payment terms in the SaaS vendor agreement?,0.95,0.95,0.90,Accurate and fully grounded.
+fin-002,Does the MSA include an auto-renewal clause and what notice is required to cancel?,0.95,0.90,0.90,Correct; notice period right.
+fin-003,What is the liability cap in the partnership agreement?,0.90,0.90,0.90,Captures the confidentiality carve-out.
+fin-008,What data-protection obligations apply if a vendor processes personal data?,0.90,0.90,0.90,Processor role and 72h both present.
+fin-013,How much did we spend with this vendor last fiscal year?,0.10,0.05,0.70,Hallucinated $250k; context says $118400. Judge missed this.
+fin-016,What governing law and dispute-resolution venue apply?,0.95,0.95,0.90,Delaware + NY AAA correct.
+fin-017,Which invoices are currently past due and by how much in total?,0.90,0.90,0.85,Answer correct even though retrieval missed a node.
+fin-018,Does the NDA survive termination and for how long?,0.90,0.90,0.90,3 years + trade-secret carve-out correct.

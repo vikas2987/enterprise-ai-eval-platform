@@ -1,47 +1,85 @@
 <h1 align="center">Enterprise AI Evaluation Platform</h1>
 
 <p align="center">
-  <b>Measure whether your enterprise AI agents can be trusted in production.</b><br>
-  A framework for evaluating LLM & RAG agents on the metrics that actually decide adoption:
-  faithfulness, groundedness, answer quality, latency, and cost.
+  <b>Prove your enterprise AI agents can be trusted in production — before they ship.</b><br>
+  An opinionated harness for evaluating LLM &amp; RAG agents on the metrics that actually
+  decide adoption: faithfulness, groundedness, retrieval completeness, latency, and cost.
 </p>
 
 <p align="center">
   <img alt="status" src="https://img.shields.io/badge/status-active-brightgreen">
   <img alt="python" src="https://img.shields.io/badge/python-3.10%2B-blue">
+  <img alt="deps" src="https://img.shields.io/badge/runtime%20deps-zero-success">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-lightgrey">
 </p>
 
 ---
 
-## Why this exists
+## The problem
 
-Most enterprise AI projects fail not because the model is weak, but because **no one can prove the outputs are trustworthy**. Business teams won't adopt an AI agent they can't verify, and "it looks good in the demo" is not an evaluation strategy.
+Most enterprise AI projects don't stall because the model is weak. They stall because
+**no one can prove the outputs are trustworthy.** A finance or legal team will not put an
+agent in front of a client on the strength of "it looked good in the demo."
 
-BLEU and ROUGE were built for translation, not for enterprise RAG and agents. They tell you almost nothing about whether an answer is *grounded in the source*, *factually correct*, or *safe to put in front of a finance or legal team*.
+And the usual metrics don't help. BLEU and ROUGE measure n-gram overlap with a reference
+string — built for translation, blind to the things enterprise RAG lives or dies on:
 
-This platform is a practical, opinionated harness for the questions that matter:
+- A fluent, confident, **hallucinated** answer scores *well* on overlap.
+- They say nothing about whether an answer is **grounded in the retrieved source**.
+- They can't see what **retrieval missed** — the quiet failure that sinks multi-hop agents.
 
-- **Is the answer faithful to the retrieved context, or is the model hallucinating?**
-- **Is it grounded — can we trace every claim back to a source?**
-- **Is it actually answering the question?**
-- **What does it cost, and how fast is it, at production volume?**
-- **Did a prompt or model change make things quietly worse?** (regression gates)
+## Who it's for & the jobs it does
 
-> Built by a practitioner who ships enterprise AI agents in production. The design reflects a simple belief: for enterprise AI, **evaluation and trust are the product**, not an afterthought.
+| User | Job to be done |
+|---|---|
+| **AI/ML engineer** | "Before I merge a prompt or model change, tell me if quality quietly regressed." |
+| **AI product manager** | "Give me a scorecard I can show a stakeholder that says *why* this agent is trustworthy." |
+| **Platform / MLOps** | "Gate the eval in CI so a bad change can't reach production." |
+| **Risk / compliance partner** | "Show me the answer is grounded and auditable, and that retrieval was complete." |
+
+## What it measures
+
+| Capability | Answers the question | How |
+|---|---|---|
+| **Faithfulness** | Is the answer true to the retrieved context, or hallucinated? | LLM-as-judge, rubric-scored |
+| **Groundedness** | Can every claim be traced to a source (auditable)? | LLM-as-judge, rubric-scored |
+| **Answer relevance** | Does it actually answer the question? | LLM-as-judge, rubric-scored |
+| **GraphRAG retrieval** | Did we retrieve **all** the relevant nodes, or silently miss one? | Measured from node sets |
+| **Latency & cost** | Is it fast and cheap enough at production volume? | Measured, p50/p95 + $/query |
+| **Regression gate** | Did this change make anything worse? | Threshold → CI exit code |
 
 ---
 
-## What it does
+## The dashboard
 
-| Capability | Description |
-|---|---|
-| **Quality metrics** | Faithfulness, groundedness, answer relevance — scored by an LLM-as-judge with rubric prompts |
-| **Operational metrics** | Per-query latency and token/cost accounting |
-| **Pluggable judges** | Ship with a mock judge (runs offline, no API key) or plug in a real LLM judge |
-| **Dataset-driven** | Evaluate against a versioned `.jsonl` eval set — repeatable, reviewable |
-| **Regression gates** | Fail CI when scores drop below a threshold, so prompt/model changes can't silently degrade quality |
-| **Readable reports** | Per-example and aggregate scorecards in the terminal and as JSON/HTML |
+One command turns an eval set into a self-contained HTML scorecard — no server, no
+dependencies. Green is healthy; amber and red are where a reviewer looks first.
+
+![Evaluation dashboard](docs/images/dashboard.png)
+
+> Note the red `0.67` on `fin-017`: the answer is correct, but **retrieval missed a
+> relevant node**. Quality metrics alone would never have caught that — the GraphRAG
+> completeness metric does.
+
+---
+
+## Catch a silent regression (prompt/model A·B)
+
+The scenario every AI team fears: a "small" prompt tweak that's faster and cheaper — and
+quietly less faithful. Run the same questions through both versions and diff them:
+
+```bash
+python -m eval_platform.compare \
+  --baseline datasets/ab_baseline.jsonl \
+  --candidate datasets/ab_candidate.jsonl \
+  --html reports/compare.html
+```
+
+![Version comparison](docs/images/comparison.png)
+
+The candidate is ~15% faster — but faithfulness dropped because it started hallucinating on
+payment terms. The **comparison gate fails with a non-zero exit code**, so the "improvement"
+never merges. That's the whole point.
 
 ---
 
@@ -50,30 +88,73 @@ This platform is a practical, opinionated harness for the questions that matter:
 ```bash
 git clone https://github.com/vikas2987/enterprise-ai-eval-platform.git
 cd enterprise-ai-eval-platform
-pip install -r requirements.txt
+pip install -e ".[dev]"        # or: pip install -r requirements.txt
 
-# Runs fully offline with the built-in mock judge:
-python -m eval_platform.runner --dataset datasets/example_eval_set.jsonl
+# 1) Evaluate a run (offline mock judge, no API key) + write the dashboard:
+python -m eval_platform.runner \
+  --dataset datasets/enterprise_finance_legal.jsonl \
+  --html reports/run.html
 
-# To use a real LLM judge (Anthropic):
+# 2) A/B two versions and gate on regressions:
+python -m eval_platform.compare \
+  --baseline datasets/ab_baseline.jsonl \
+  --candidate datasets/ab_candidate.jsonl
+
+# 3) Calibrate the judge against human labels:
+python -m eval_platform.human_eval agreement \
+  --dataset datasets/enterprise_finance_legal.jsonl \
+  --labels datasets/human_labels_sample.csv
+
+# Use a real LLM judge instead of the mock:
 export ANTHROPIC_API_KEY=sk-...
-python -m eval_platform.runner --dataset datasets/example_eval_set.jsonl --judge anthropic
+python -m eval_platform.runner --dataset datasets/enterprise_finance_legal.jsonl --judge anthropic
 ```
-
-Example output:
 
 ```
 Enterprise AI Evaluation Platform — run report
 ------------------------------------------------
-examples evaluated ......... 5
-faithfulness (avg) ......... 0.91
-groundedness (avg) ......... 0.88
-answer_relevance (avg) ..... 0.93
-latency p50 / p95 (ms) ..... 620 / 1180
-est. cost (avg, USD) ....... 0.0041
+examples evaluated ......... 18
+faithfulness (avg)........ 0.91
+groundedness (avg)........ 0.91
+answer_relevance (avg).... 0.81
+latency p50 / p95 (ms) ..... 685 / 1018
+est. cost (avg, USD) ....... 0.0044
 ------------------------------------------------
-REGRESSION GATE: PASS (min faithfulness 0.85 >= 0.80)
+GraphRAG retrieval (nodes)
+  completeness (avg) ....... 0.98
+  precision (avg) .......... 1.00
+  full-recall rate ......... 94%
+------------------------------------------------
+REGRESSION GATE: PASS (min faithfulness 0.91 >= 0.80)
 ```
+
+---
+
+## Keep the judge honest (human calibration)
+
+An LLM judge scales, but it is **not** ground truth. Export its scores, have a human label
+the same examples, and measure agreement — per metric, with error and correlation:
+
+```bash
+# Export a labeling sheet (judge scores filled, human columns blank):
+python -m eval_platform.human_eval export \
+  --dataset datasets/enterprise_finance_legal.jsonl --out reports/to_label.csv
+# A reviewer fills human_* columns, then:
+python -m eval_platform.human_eval agreement \
+  --dataset datasets/enterprise_finance_legal.jsonl --labels reports/to_label.csv
+```
+
+```
+Judge ↔ human calibration
+--------------------------------------------------------
+metric                 n     MAE    corr  verdict
+faithfulness           8   0.122    0.72  acceptable
+groundedness           8   0.127    0.72  acceptable
+answer_relevance       8   0.079    0.34  acceptable
+```
+
+In the bundled sample, the human scores a hallucinated invoice answer far lower than the
+mock judge does — exactly the drift signal you use to re-tune the rubric before trusting it.
 
 ---
 
@@ -82,18 +163,22 @@ REGRESSION GATE: PASS (min faithfulness 0.85 >= 0.80)
 ```mermaid
 flowchart LR
     A[Eval dataset - jsonl] --> B[Runner]
-    B --> C[Metrics]
-    C --> C1[Faithfulness]
-    C --> C2[Groundedness]
-    C --> C3[Answer relevance]
-    C --> C4[Latency and cost]
-    C1 & C2 & C3 --> J[LLM-as-judge - mock or real]
-    C4 & J --> R[Report + regression gate]
+    B --> Q[Quality judge<br/>faithful · grounded · relevant]
+    B --> O[Operational<br/>latency · cost]
+    B --> G[GraphRAG<br/>retrieval completeness]
+    Q & O & G --> R[RunReport]
+    R --> D[HTML dashboard]
+    R --> GATE{Regression gate}
+    R --> C[A/B comparison]
+    R --> H[Human calibration]
+    GATE -->|fail| X[CI blocks merge]
 ```
 
-Each record in the dataset carries a `question`, the `contexts` the agent retrieved, the `answer` it produced, and optionally a `reference` answer. The runner scores every record across all metrics, aggregates the results, and applies configurable regression gates.
-
-See [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md) for the thinking behind each metric, and [`docs/metrics.md`](docs/metrics.md) for exact definitions.
+Each dataset record carries the `question`, the `contexts` retrieved, the `answer`, and —
+optionally — a `reference`, graph `retrieved_nodes`/`relevant_nodes`, and `latency_ms`/
+`cost_usd`. See **[docs/architecture.md](docs/architecture.md)** for the full design,
+**[docs/evaluation-methodology.md](docs/evaluation-methodology.md)** for *why* each metric,
+and **[docs/metrics.md](docs/metrics.md)** for exact definitions.
 
 ---
 
@@ -102,24 +187,40 @@ See [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md) for the t
 ```
 enterprise-ai-eval-platform/
 ├── src/eval_platform/
-│   ├── metrics/            # faithfulness, groundedness, relevance, operational
-│   ├── evaluators/         # LLM-as-judge implementations (mock + anthropic)
-│   ├── runner.py           # orchestrates a full evaluation run
-│   └── report.py           # scorecards + regression gates
-├── datasets/               # versioned eval sets (.jsonl)
+│   ├── metrics/            # quality (judged) · operational · graph (GraphRAG)
+│   ├── evaluators/         # LLM-as-judge: mock (offline) + anthropic
+│   ├── runner.py           # orchestrates a run · --html dashboard
+│   ├── report.py           # scorecards, HTML dashboard, regression gate
+│   ├── compare.py          # prompt/model A·B comparison + gate
+│   └── human_eval.py       # export-for-labeling + judge↔human calibration
+├── datasets/               # Finance/Legal eval set, A/B pair, sample labels
+├── docs/                   # architecture, methodology, metrics, demo script
 ├── examples/               # worked example: evaluating a RAG agent
-├── docs/                   # methodology & metric definitions
-└── tests/                  # unit tests for the metrics
+└── tests/                  # unit tests (pytest)
 ```
 
 ---
 
+## Design principles
+
+- **Evaluation and trust *are* the product** — not an afterthought bolted on before launch.
+- **Pluggable judges.** Anything implementing the `Judge` protocol drops in — mock, a real
+  LLM, an ensemble, your own model.
+- **Zero hard runtime dependencies.** The whole pipeline — dashboard and calibration math
+  included — runs on the standard library with the offline mock judge, so it works in CI and
+  demos with no API key.
+- **Every path ends in a gate.** A run or a comparison resolves to a boolean → a CI exit
+  code. Quality regressions block merges the way a failing test does.
+
 ## Roadmap
 
-- [ ] Graph-RAG-aware retrieval-completeness metric (did we retrieve *all* relevant nodes?)
-- [ ] HTML dashboard for run-over-run trend tracking
+- [x] GraphRAG retrieval-completeness metric
+- [x] HTML dashboard
+- [x] Prompt/model version comparison with a CI gate
+- [x] Human-in-the-loop labeling + judge calibration
+- [ ] Run-over-run trend tracking (history + sparklines)
 - [ ] Adversarial / red-team question packs for enterprise agents
-- [ ] Human-in-the-loop labeling workflow to calibrate the LLM judge
+- [ ] Ensemble-judge and confidence intervals on scores
 
 ---
 
@@ -129,4 +230,5 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-<p align="center"><i>Maintained by Vikas Shukla — AI Product & Platform leader focused on enterprise AI evaluation, trust, and reliability.</i></p>
+<p align="center"><i>Maintained by Vikas Shukla — AI Product &amp; Platform leader focused on
+enterprise AI evaluation, trust, and reliability.</i></p>

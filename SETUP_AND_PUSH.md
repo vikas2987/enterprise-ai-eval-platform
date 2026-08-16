@@ -12,7 +12,7 @@ PYTHONPATH=src python -m eval_platform.runner --dataset datasets/example_eval_se
 PYTHONPATH=src python -m pytest -q
 ```
 
-You should see a passing regression gate and 6 passing tests.
+You should see a passing regression gate and 22 passing tests.
 
 ## 2. Create the repo on GitHub
 
